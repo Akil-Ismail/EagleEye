@@ -1,0 +1,99 @@
+Dear Dr. Ali Bazzi,
+I hope you are doing well.
+I would like to propose my capstone project for the CCE course and kindly ask for your approval.
+My proposed project is titled:
+"AI-Powered Intelligent Face Recognition and Security Defense System Using Computer Vision and Large Language Models (LLMs)"
+The goal of this project is to develop an intelligent security system capable of detecting and recognizing faces in real time using Artificial Intelligence. The system will distinguish between authorized and unauthorized individuals, detect suspicious access attempts, and automatically generate intelligent security reports using a Large Language Model (LLM).
+Unlike traditional face recognition systems, this project integrates modern AI technologies with cybersecurity concepts to create a smart security assistant capable of explaining security events, providing natural language summaries, and assisting administrators in monitoring system activity.
+The project will include the following features:
+Real-time face detection using Computer Vision.
+Face recognition for authorized users.
+Detection of unknown or unauthorized individuals.
+Liveness detection to reduce spoofing attacks using photos or videos.
+Automatic security alerts upon unauthorized access.
+AI-powered incident summaries and security reports using an LLM.
+A user-friendly dashboard for monitoring and managing the system.
+I believe this project is achievable within one month because it will be developed in well-defined stages. Existing open-source AI models will be integrated with custom software, allowing me to focus on system integration, security features, and intelligent decision-making rather than training models from scratch.
+The project demonstrates knowledge from multiple Computer and Communications Engineering disciplines, including Artificial Intelligence, Computer Vision, Machine Learning, Cybersecurity, Software Engineering, Networking, and Embedded Systems.
+I believe this project is innovative, practical, and highly relevant to current industry trends. It also provides opportunities for future expansion, such as multi-camera monitoring, cloud integration, and smart access control.
+I would greatly appreciate your feedback and approval. I am ready to discuss the project in more detail and make any modifications based on your recommendations.
+Thank you for your time and consideration.
+
+the above is a capstone project proposal, I want to use MySQL DB, vector DB, and Python FastAPI backend and Python frontend libraries lets ask all the important questions , then start drawing the roadmap that I will n eed to finish in a month
+
+Show less
+
+Identified critical architectural decisions and prioritized clarifying questions before roadmapping
+Identified critical architectural decisions and prioritized clarifying questions before roadmapping
+Good plan — before I lock in a roadmap, three architecture decisions will shape everything else (how the pieces talk to each other, what's realistic in a month, and what "embedded systems" angle you can credibly claim). Let me get your preferences on those, then I'll fill in the rest with sensible defaults and build the full month-by-month plan.
+
+Vector DB for storing face embeddings (used for fast similarity search / recognition)?
+Qdrant (production-grade, has REST API)
+What should the 'Python frontend' dashboard be built with?
+Desktop app (PyQt, runs locally without browser)
+LLM for generating security summaries/reports?
+could we use a free AI API? such as grock
+
+Architected technical stack with schema, endpoints, and risk mitigation
+Architected technical stack with schema, endpoints, and risk mitigation
+Yes — Groq is actually a great fit here. It's free tier is generous, and its inference speed (LPU hardware) means your "AI-powered incident summary" won't add noticeable lag after an event fires. It's OpenAI-compatible, so integration is just a REST call with your enrolled models (e.g. Llama 3.3 70B for quality summaries, or Llama 3.1 8B Instant if you want it near-instant). One nice side note for your proposal: you'd only be sending structured event metadata (timestamps, user IDs, confidence scores) to Groq for summarization — not face images — so the biometric data never leaves your machine, which is a good privacy point to mention to Dr. Bazzi.
+
+That locks in your stack:
+
+DB layer: MySQL (users, access logs, alerts) + Qdrant (face embeddings, REST API)
+Backend: FastAPI
+CV: OpenCV + face detection/recognition + liveness check
+LLM: Groq API (free tier)
+Frontend: PyQt desktop app
+For the remaining smaller decisions (face recognition model, liveness method, camera source) I'll pick sensible, fast-to-implement defaults and flag them so you can swap them out if you'd rather:
+
+Face detection/recognition: InsightFace (buffalo_l) — pretrained RetinaFace + ArcFace, no training needed, strong accuracy out of the box. (Fallback: face_recognition/dlib if InsightFace install gives you trouble on your machine.)
+Liveness detection: Eye-blink (EAR) + basic texture check — realistic to build in days, not weeks. Full deep anti-spoofing models exist but are overkill for a 1-month capstone.
+Camera: Laptop webcam via OpenCV VideoCapture(0), architected so swapping to an RTSP IP camera later is a one-line change (nice callout for your "future expansion" section).
+Let me draw the architecture, then the 4-week roadmap.
+
+Here's how the pieces connect:
+
+
+
+The FastAPI backend is the hub: it writes access events to MySQL, queries Qdrant for face matches, calls Groq only when it needs to turn a raw event into a readable summary, and serves everything to the PyQt dashboard over local HTTP. Now the 4-week build order:
+
+
+
+Here's the detail behind each week.
+
+Data layer
+
+MySQL tables: users (id, name, role, enrolled_at), access_logs (id, user_id nullable, timestamp, camera_id, confidence_score, liveness_passed, snapshot_path), alerts (id, log_id, type, resolved, created_at), admins (id, username, password_hash)
+Qdrant collection face_embeddings: vector (512-dim from ArcFace), payload {user_id, enrolled_at} — one point per enrollment photo (enroll 3-5 photos per person for robustness)
+Week 1 — foundations
+
+Repo structure, Python venv, Docker Compose for MySQL + Qdrant (keeps both DBs reproducible for your demo)
+FastAPI skeleton with a health-check route
+InsightFace integration: load buffalo_l, run detection + embedding extraction on a webcam frame
+Enrollment flow: capture N photos of a person → embeddings → push to Qdrant, metadata to MySQL
+Milestone: you can enroll yourself and get a match back from a live frame
+Week 2 — recognition logic
+
+Real-time loop: grab frame → detect → embed → query Qdrant (cosine similarity) → threshold decision (authorized / unknown)
+Liveness check: EAR-based blink detection over a short frame window before accepting a match as "live"
+Every recognition event writes to access_logs; repeated unknown/spoof attempts within a time window raise a row in alerts
+FastAPI endpoints: POST /enroll, POST /recognize, GET /logs, GET /alerts
+Milestone: holding up a photo of an enrolled user's face should fail the liveness check, not just recognition
+Week 3 — LLM + APIs
+
+Groq integration: a small module that takes a batch of log/alert rows (as structured JSON, no images) and returns a natural-language incident summary
+Endpoint POST /report (on-demand) and optionally a scheduled daily summary
+Start the PyQt app: main window, live camera feed widget wired to the backend's /recognize stream
+Milestone: an unauthorized-access event produces a readable report end to end
+Week 4 — dashboard & polish
+
+PyQt: logs table, alerts panel, reports panel, simple user management (enroll/remove from the UI itself)
+Threading: keep the camera loop off the UI thread so the app doesn't freeze during recognition
+End-to-end test pass: enroll → recognize → alert → report → dashboard display
+Docs + demo script + slides; keep the last 2-3 days as buffer — this is the stage most month-long projects lose to unexpected bugs, so don't schedule new features here
+One thing worth flagging to Dr. Bazzi in your proposal: since this design keeps face data local to your MySQL/Qdrant instances and only sends anonymized event metadata to Groq, you can honestly claim it addresses a real cybersecurity concern (biometric data never leaving the local system) rather than just checking a box.
+
+Want me to also draft the enrollment/recognition sequence flow (what happens frame-by-frame during a live recognition attempt), or move on to scaffolding the actual FastAPI project structure?
+
+one additional thing: the app should either take photos and videos from the camera or allow the user to upload files (images,or videos)
