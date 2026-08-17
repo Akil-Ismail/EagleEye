@@ -97,3 +97,1437 @@ One thing worth flagging to Dr. Bazzi in your proposal: since this design keeps 
 Want me to also draft the enrollment/recognition sequence flow (what happens frame-by-frame during a live recognition attempt), or move on to scaffolding the actual FastAPI project structure?
 
 one additional thing: the app should either take photos and videos from the camera or allow the user to upload files (images,or videos)
+
+
+AMAZING ! apply the above
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye" && ls -la && echo "---backend---" && ls -la backend && echo "---gitignore---" && cat .gitignore 2>/dev/null || echo "no gitignore"
+
+OUT
+total 28
+drwxr-xr-x 1 akili 197609    0 Jul 26 18:33 .
+drwxr-xr-x 1 akili 197609    0 Jul 26 18:28 ..
+drwxr-xr-x 1 akili 197609    0 Jul 26 18:37 .git
+drwxr-xr-x 1 akili 197609    0 Jul 26 18:05 backend
+drwxr-xr-x 1 akili 197609    0 Jul 26 18:05 frontend
+-rw-r--r-- 1 akili 197609 8845 Jul 26 18:31 requirments.txt
+---backend---
+total 6
+drwxr-xr-x 1 akili 197609  0 Jul 26 18:05 .
+drwxr-xr-x 1 akili 197609  0 Jul 26 18:33 ..
+-rw-r--r-- 1 akili 197609 30 Jul 26 17:51 .gitignore
+drwxr-xr-x 1 akili 197609  0 Jul 26 18:05 .vscode
+drwxr-xr-x 1 akili 197609  0 Jul 26 17:56 app
+-rw-r--r-- 1 akili 197609 26 Jul 26 17:51 requirements.txt
+drwxr-xr-x 1 akili 197609  0 Jul 26 17:50 venv
+---gitignore---
+no gitignore
+Read c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\__init__.py
+Read c:\Users\akili\Desktop\Capston Project\EagleEye\backend\.gitignore
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\docker-compose.yml
+34 lines
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: eagleeye-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-eagleeye_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-eagleeye}
+      MYSQL_USER: ${MYSQL_USER:-eagleeye}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-eagleeye_pw}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-eagleeye_root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: eagleeye-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  mysql_data:
+  qdrant_data:
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\.env.example
+5 lines
+MYSQL_ROOT_PASSWORD=eagleeye_root
+MYSQL_DATABASE=eagleeye
+MYSQL_USER=eagleeye
+MYSQL_PASSWORD=eagleeye_pw
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\.env.example
+19 lines
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=eagleeye
+MYSQL_PASSWORD=eagleeye_pw
+MYSQL_DATABASE=eagleeye
+
+QDRANT_HOST=127.0.0.1
+QDRANT_PORT=6333
+QDRANT_COLLECTION=face_embeddings
+
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
+
+JWT_SECRET_KEY=change-me-to-a-random-secret
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=480
+
+MEDIA_ROOT=./media
+Read c:\Users\akili\Desktop\Capston Project\EagleEye\backend\.vscode\settings.json
+Now the config module:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\core\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\core\config.py
+32 lines
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    mysql_host: str = "127.0.0.1"
+    mysql_port: int = 3306
+    mysql_user: str = "eagleeye"
+    mysql_password: str = "eagleeye_pw"
+    mysql_database: str = "eagleeye"
+
+    qdrant_host: str = "127.0.0.1"
+    qdrant_port: int = 6333
+    qdrant_collection: str = "face_embeddings"
+
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+
+    jwt_secret_key: str = "change-me-to-a-random-secret"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480
+
+    media_root: str = "./media"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\core\security.py
+29 lines
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from passlib.context import CryptContext
+
+from app.core.config import get_settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return pwd_context.verify(password, password_hash)
+
+
+def create_access_token(subject: str, admin_id: int) -> str:
+    settings = get_settings()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    payload = {"sub": subject, "admin_id": admin_id, "exp": expires_at}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_access_token(token: str) -> dict:
+    settings = get_settings()
+    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+Now the DB layer — schema, session pool, and repositories:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\schema.sql
+67 lines
+CREATE TABLE IF NOT EXISTS admins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    role VARCHAR(50) NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    enrolled_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS media_uploads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    source_type ENUM('camera', 'upload_image', 'upload_video') NOT NULL,
+    original_filename VARCHAR(255) NULL,
+    file_path VARCHAR(500) NOT NULL,
+    uploaded_by_admin_id INT NULL,
+    status ENUM('pending', 'processing', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP NULL,
+    CONSTRAINT fk_media_uploads_admin FOREIGN KEY (uploaded_by_admin_id) REFERENCES admins (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS access_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,
+    media_upload_id INT NULL,
+    camera_id VARCHAR(50) NULL,
+    frame_timestamp_ms INT NULL,
+    event_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    confidence_score FLOAT NOT NULL,
+    liveness_passed BOOLEAN NULL,
+    decision ENUM('authorized', 'unknown', 'spoof_suspected') NOT NULL,
+    snapshot_path VARCHAR(500) NULL,
+    CONSTRAINT fk_access_logs_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT fk_access_logs_media FOREIGN KEY (media_upload_id) REFERENCES media_uploads (id) ON DELETE SET NULL,
+    INDEX idx_access_logs_event_timestamp (event_timestamp),
+    INDEX idx_access_logs_decision (decision)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    log_id INT NOT NULL,
+    type ENUM('unauthorized_access', 'spoof_attempt', 'repeated_unknown') NOT NULL,
+    resolved BOOLEAN NOT NULL DEFAULT FALSE,
+    resolved_by_admin_id INT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    CONSTRAINT fk_alerts_log FOREIGN KEY (log_id) REFERENCES access_logs (id) ON DELETE CASCADE,
+    CONSTRAINT fk_alerts_admin FOREIGN KEY (resolved_by_admin_id) REFERENCES admins (id) ON DELETE SET NULL,
+    INDEX idx_alerts_resolved (resolved)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    period_start TIMESTAMP NOT NULL,
+    period_end TIMESTAMP NOT NULL,
+    summary_text TEXT NOT NULL,
+    log_ids_included JSON NOT NULL,
+    generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\session.py
+49 lines
+from contextlib import contextmanager
+
+import mysql.connector
+from mysql.connector import pooling
+
+from app.core.config import get_settings
+
+_pool: pooling.MySQLConnectionPool | None = None
+
+
+def get_pool() -> pooling.MySQLConnectionPool:
+    global _pool
+    if _pool is None:
+        settings = get_settings()
+        _pool = pooling.MySQLConnectionPool(
+            pool_name="eagleeye_pool",
+            pool_size=5,
+            host=settings.mysql_host,
+            port=settings.mysql_port,
+            user=settings.mysql_user,
+            password=settings.mysql_password,
+            database=settings.mysql_database,
+            autocommit=False,
+        )
+    return _pool
+
+
+@contextmanager
+def get_connection():
+    conn = get_pool().get_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@contextmanager
+def get_cursor(dictionary: bool = True):
+    with get_connection() as conn:
+        cursor = conn.cursor(dictionary=dictionary)
+        try:
+            yield cursor
+        finally:
+            cursor.close()
+Edit c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\session.py
+Removed 1 line
+Now migrate.py:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\migrate.py
+35 lines
+from pathlib import Path
+
+import mysql.connector
+
+from app.core.config import get_settings
+
+SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
+
+def run_migrations() -> None:
+    settings = get_settings()
+    conn = mysql.connector.connect(
+        host=settings.mysql_host,
+        port=settings.mysql_port,
+        user=settings.mysql_user,
+        password=settings.mysql_password,
+        database=settings.mysql_database,
+    )
+    try:
+        cursor = conn.cursor()
+        statements = SCHEMA_PATH.read_text().split(";")
+        for statement in statements:
+            statement = statement.strip()
+            if statement:
+                cursor.execute(statement)
+        conn.commit()
+        cursor.close()
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    run_migrations()
+    print("Schema applied.")
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\admins_repo.py
+17 lines
+from app.db.session import get_cursor
+
+
+def get_by_username(username: str) -> dict | None:
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM admins WHERE username = %s", (username,))
+        return cursor.fetchone()
+
+
+def create_admin(username: str, password_hash: str) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO admins (username, password_hash) VALUES (%s, %s)",
+            (username, password_hash),
+        )
+        return cursor.lastrowid
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\users_repo.py
+31 lines
+from app.db.session import get_cursor
+
+
+def create_user(full_name: str, role: str | None = None, notes: str | None = None) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO users (full_name, role, notes) VALUES (%s, %s, %s)",
+            (full_name, role, notes),
+        )
+        return cursor.lastrowid
+
+
+def get_user(user_id: int) -> dict | None:
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        return cursor.fetchone()
+
+
+def list_users(active_only: bool = True) -> list[dict]:
+    with get_cursor() as cursor:
+        if active_only:
+            cursor.execute("SELECT * FROM users WHERE is_active = TRUE ORDER BY full_name")
+        else:
+            cursor.execute("SELECT * FROM users ORDER BY full_name")
+        return cursor.fetchall()
+
+
+def set_user_active(user_id: int, is_active: bool) -> None:
+    with get_cursor() as cursor:
+        cursor.execute("UPDATE users SET is_active = %s WHERE id = %s", (is_active, user_id))
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\media_repo.py
+39 lines
+from app.db.session import get_cursor
+
+
+def create_media_upload(
+    source_type: str,
+    file_path: str,
+    original_filename: str | None = None,
+    uploaded_by_admin_id: int | None = None,
+) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO media_uploads (source_type, original_filename, file_path, uploaded_by_admin_id)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (source_type, original_filename, file_path, uploaded_by_admin_id),
+        )
+        return cursor.lastrowid
+
+
+def get_media_upload(media_upload_id: int) -> dict | None:
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM media_uploads WHERE id = %s", (media_upload_id,))
+        return cursor.fetchone()
+
+
+def set_status(media_upload_id: int, status: str, processed_at_now: bool = False) -> None:
+    with get_cursor() as cursor:
+        if processed_at_now:
+            cursor.execute(
+                "UPDATE media_uploads SET status = %s, processed_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (status, media_upload_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE media_uploads SET status = %s WHERE id = %s",
+                (status, media_upload_id),
+            )
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\logs_repo.py
+70 lines
+from app.db.session import get_cursor
+
+
+def create_access_log(
+    confidence_score: float,
+    decision: str,
+    user_id: int | None = None,
+    media_upload_id: int | None = None,
+    camera_id: str | None = None,
+    frame_timestamp_ms: int | None = None,
+    liveness_passed: bool | None = None,
+    snapshot_path: str | None = None,
+) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO access_logs (
+                user_id, media_upload_id, camera_id, frame_timestamp_ms,
+                confidence_score, liveness_passed, decision, snapshot_path
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_id,
+                media_upload_id,
+                camera_id,
+                frame_timestamp_ms,
+                confidence_score,
+                liveness_passed,
+                decision,
+                snapshot_path,
+            ),
+        )
+        return cursor.lastrowid
+
+
+def get_log(log_id: int) -> dict | None:
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM access_logs WHERE id = %s", (log_id,))
+        return cursor.fetchone()
+
+
+def list_logs(limit: int = 100, offset: int = 0, decision: str | None = None) -> list[dict]:
+    with get_cursor() as cursor:
+        if decision:
+            cursor.execute(
+                "SELECT * FROM access_logs WHERE decision = %s "
+                "ORDER BY event_timestamp DESC LIMIT %s OFFSET %s",
+                (decision, limit, offset),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM access_logs ORDER BY event_timestamp DESC LIMIT %s OFFSET %s",
+                (limit, offset),
+            )
+        return cursor.fetchall()
+
+
+def count_recent_unknown(user_id_is_null: bool, within_minutes: int) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total FROM access_logs
+            WHERE decision = 'unknown'
+              AND event_timestamp >= NOW() - INTERVAL %s MINUTE
+            """,
+            (within_minutes,),
+        )
+        row = cursor.fetchone()
+        return row["total"] if row else 0
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\alerts_repo.py
+38 lines
+from app.db.session import get_cursor
+
+
+def create_alert(log_id: int, alert_type: str) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO alerts (log_id, type) VALUES (%s, %s)",
+            (log_id, alert_type),
+        )
+        return cursor.lastrowid
+
+
+def list_alerts(resolved: bool | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
+    with get_cursor() as cursor:
+        if resolved is None:
+            cursor.execute(
+                "SELECT * FROM alerts ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (limit, offset),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM alerts WHERE resolved = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (resolved, limit, offset),
+            )
+        return cursor.fetchall()
+
+
+def resolve_alert(alert_id: int, admin_id: int) -> None:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE alerts
+            SET resolved = TRUE, resolved_by_admin_id = %s, resolved_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (admin_id, alert_id),
+        )
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\reports_repo.py
+31 lines
+import json
+
+from app.db.session import get_cursor
+
+
+def create_report(period_start, period_end, summary_text: str, log_ids_included: list[int]) -> int:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO reports (period_start, period_end, summary_text, log_ids_included)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (period_start, period_end, summary_text, json.dumps(log_ids_included)),
+        )
+        return cursor.lastrowid
+
+
+def list_reports(limit: int = 50, offset: int = 0) -> list[dict]:
+    with get_cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM reports ORDER BY generated_at DESC LIMIT %s OFFSET %s",
+            (limit, offset),
+        )
+        return cursor.fetchall()
+
+
+def get_report(report_id: int) -> dict | None:
+    with get_cursor() as cursor:
+        cursor.execute("SELECT * FROM reports WHERE id = %s", (report_id,))
+        return cursor.fetchone()
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+Now the Qdrant vector layer:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\vector\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\vector\qdrant_client.py
+12 lines
+from functools import lru_cache
+
+from qdrant_client import QdrantClient
+
+from app.core.config import get_settings
+
+
+@lru_cache
+def get_qdrant_client() -> QdrantClient:
+    settings = get_settings()
+    return QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\vector\collections.py
+65 lines
+import uuid
+
+from qdrant_client.models import Distance, FieldCondition, Filter, MatchValue, PointStruct, VectorParams
+
+from app.core.config import get_settings
+from app.vector.qdrant_client import get_qdrant_client
+
+EMBEDDING_SIZE = 512
+
+
+def ensure_collection() -> None:
+    settings = get_settings()
+    client = get_qdrant_client()
+    if not client.collection_exists(settings.qdrant_collection):
+        client.create_collection(
+            collection_name=settings.qdrant_collection,
+            vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
+        )
+
+
+def upsert_face_embedding(
+    user_id: int,
+    embedding: list[float],
+    media_upload_id: int | None,
+    enrolled_at: str,
+) -> str:
+    settings = get_settings()
+    client = get_qdrant_client()
+    point_id = str(uuid.uuid4())
+    client.upsert(
+        collection_name=settings.qdrant_collection,
+        points=[
+            PointStruct(
+                id=point_id,
+                vector=embedding,
+                payload={
+                    "user_id": user_id,
+                    "media_upload_id": media_upload_id,
+                    "enrolled_at": enrolled_at,
+                },
+            )
+        ],
+    )
+    return point_id
+
+
+def search_similar_faces(embedding: list[float], top_k: int = 5, score_threshold: float | None = None):
+    settings = get_settings()
+    client = get_qdrant_client()
+    return client.query_points(
+        collection_name=settings.qdrant_collection,
+        query=embedding,
+        limit=top_k,
+        score_threshold=score_threshold,
+    ).points
+
+
+def delete_user_embeddings(user_id: int) -> None:
+    settings = get_settings()
+    client = get_qdrant_client()
+    client.delete(
+        collection_name=settings.qdrant_collection,
+        points_selector=Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=user_id))]),
+    )
+Now pydantic schemas for requests/responses:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\auth.py
+12 lines
+from pydantic import BaseModel
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\users.py
+19 lines
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class UserCreate(BaseModel):
+    full_name: str
+    role: str | None = None
+    notes: str | None = None
+
+
+class UserResponse(BaseModel):
+    id: int
+    full_name: str
+    role: str | None
+    is_active: bool
+    enrolled_at: datetime
+    notes: str | None
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\recognition.py
+36 lines
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class RecognitionResult(BaseModel):
+    decision: str
+    user_id: int | None
+    full_name: str | None
+    confidence_score: float
+    liveness_passed: bool | None
+    log_id: int
+
+
+class AccessLogResponse(BaseModel):
+    id: int
+    user_id: int | None
+    media_upload_id: int | None
+    camera_id: str | None
+    event_timestamp: datetime
+    confidence_score: float
+    liveness_passed: bool | None
+    decision: str
+    snapshot_path: str | None
+
+
+class VideoJobResponse(BaseModel):
+    media_upload_id: int
+    status: str
+
+
+class VideoJobStatusResponse(BaseModel):
+    media_upload_id: int
+    status: str
+    result_log_ids: list[int] = []
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\alerts.py
+14 lines
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class AlertResponse(BaseModel):
+    id: int
+    log_id: int
+    type: str
+    resolved: bool
+    resolved_by_admin_id: int | None
+    created_at: datetime
+    resolved_at: datetime | None
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\schemas\reports.py
+17 lines
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class ReportGenerateRequest(BaseModel):
+    period_start: datetime
+    period_end: datetime
+
+
+class ReportResponse(BaseModel):
+    id: int
+    period_start: datetime
+    period_end: datetime
+    summary_text: str
+    generated_at: datetime
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\core\deps.py
+16 lines
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jwt import PyJWTError
+
+from app.core.security import decode_access_token
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def get_current_admin(token: str = Depends(oauth2_scheme)) -> dict:
+    try:
+        payload = decode_access_token(token)
+    except PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return {"admin_id": payload["admin_id"], "username": payload["sub"]}
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\services\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\services\face_service.py
+10 lines
+"""Face detection, embedding, and liveness — wired to InsightFace in Week 1. Stubbed for now."""
+
+
+def extract_embedding(image_bytes: bytes) -> list[float]:
+    raise NotImplementedError("InsightFace (buffalo_l) integration lands in Week 1")
+
+
+def check_liveness(frame_sequence: list[bytes]) -> bool:
+    raise NotImplementedError("EAR-based blink liveness check lands in Week 2")
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\services\media_service.py
+22 lines
+import uuid
+from pathlib import Path
+
+from fastapi import UploadFile
+
+from app.core.config import get_settings
+
+
+def save_upload(file: UploadFile, subdir: str) -> str:
+    settings = get_settings()
+    target_dir = Path(settings.media_root) / subdir
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = Path(file.filename).suffix if file.filename else ""
+    stored_name = f"{uuid.uuid4()}{suffix}"
+    target_path = target_dir / stored_name
+
+    with target_path.open("wb") as out_file:
+        out_file.write(file.file.read())
+
+    return str(target_path)
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\services\groq_service.py
+6 lines
+"""Turns structured log/alert rows into a natural-language incident summary via Groq. Lands in Week 3."""
+
+
+def summarize_events(log_rows: list[dict], alert_rows: list[dict]) -> str:
+    raise NotImplementedError("Groq incident summary integration lands in Week 3")
+Now the routers:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\auth.py
+18 lines
+from fastapi import APIRouter, HTTPException, status
+
+from app.core.security import create_access_token, verify_password
+from app.db.repository import admins_repo
+from app.schemas.auth import LoginRequest, TokenResponse
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(credentials: LoginRequest):
+    admin = admins_repo.get_by_username(credentials.username)
+    if not admin or not verify_password(credentials.password, admin["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+
+    token = create_access_token(subject=admin["username"], admin_id=admin["id"])
+    return TokenResponse(access_token=token)
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\users.py
+19 lines
+from fastapi import APIRouter, Depends
+
+from app.core.deps import get_current_admin
+from app.db.repository import users_repo
+from app.schemas.users import UserResponse
+
+router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(get_current_admin)])
+
+
+@router.get("", response_model=list[UserResponse])
+def list_users(active_only: bool = True):
+    return users_repo.list_users(active_only=active_only)
+
+
+@router.patch("/{user_id}/deactivate")
+def deactivate_user(user_id: int):
+    users_repo.set_user_active(user_id, is_active=False)
+    return {"status": "deactivated"}
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\enroll.py
+32 lines
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Form, UploadFile
+
+from app.core.deps import get_current_admin
+from app.db.repository import users_repo
+from app.schemas.users import UserResponse
+from app.services import media_service
+from app.services.face_service import extract_embedding
+from app.vector.collections import upsert_face_embedding
+
+router = APIRouter(prefix="/enroll", tags=["enroll"], dependencies=[Depends(get_current_admin)])
+
+
+@router.post("", response_model=UserResponse)
+def enroll_user(
+    full_name: str = Form(...),
+    role: str | None = Form(None),
+    notes: str | None = Form(None),
+    photos: list[UploadFile] = Form(...),
+):
+    user_id = users_repo.create_user(full_name=full_name, role=role, notes=notes)
+    enrolled_at = datetime.now(timezone.utc).isoformat()
+
+    for photo in photos:
+        stored_path = media_service.save_upload(photo, subdir=f"enrollment/{user_id}")
+        with open(stored_path, "rb") as image_file:
+            embedding = extract_embedding(image_file.read())
+        upsert_face_embedding(user_id, embedding, media_upload_id=None, enrolled_at=enrolled_at)
+
+    return users_repo.get_user(user_id)
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\services\recognition_service.py
+56 lines
+from app.db.repository import alerts_repo, logs_repo
+from app.vector.collections import search_similar_faces
+
+SIMILARITY_THRESHOLD = 0.55
+REPEATED_UNKNOWN_WINDOW_MINUTES = 5
+REPEATED_UNKNOWN_COUNT_THRESHOLD = 3
+
+
+def match_embedding(embedding: list[float]) -> tuple[int | None, float]:
+    matches = search_similar_faces(embedding, top_k=1, score_threshold=SIMILARITY_THRESHOLD)
+    if not matches:
+        return None, 0.0
+    best = matches[0]
+    return best.payload["user_id"], best.score
+
+
+def record_recognition_event(
+    user_id: int | None,
+    confidence_score: float,
+    liveness_passed: bool | None,
+    camera_id: str | None = None,
+    media_upload_id: int | None = None,
+    frame_timestamp_ms: int | None = None,
+    snapshot_path: str | None = None,
+) -> tuple[int, str]:
+    if liveness_passed is False:
+        decision = "spoof_suspected"
+    elif user_id is not None:
+        decision = "authorized"
+    else:
+        decision = "unknown"
+
+    log_id = logs_repo.create_access_log(
+        confidence_score=confidence_score,
+        decision=decision,
+        user_id=user_id,
+        media_upload_id=media_upload_id,
+        camera_id=camera_id,
+        frame_timestamp_ms=frame_timestamp_ms,
+        liveness_passed=liveness_passed,
+        snapshot_path=snapshot_path,
+    )
+
+    if decision == "spoof_suspected":
+        alerts_repo.create_alert(log_id, "spoof_attempt")
+    elif decision == "unknown":
+        recent_unknown = logs_repo.count_recent_unknown(
+            user_id_is_null=True, within_minutes=REPEATED_UNKNOWN_WINDOW_MINUTES
+        )
+        if recent_unknown >= REPEATED_UNKNOWN_COUNT_THRESHOLD:
+            alerts_repo.create_alert(log_id, "repeated_unknown")
+        else:
+            alerts_repo.create_alert(log_id, "unauthorized_access")
+
+    return log_id, decision
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\recognize.py
+62 lines
+from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile
+
+from app.core.deps import get_current_admin
+from app.db.repository import media_repo, users_repo
+from app.schemas.recognition import RecognitionResult, VideoJobResponse, VideoJobStatusResponse
+from app.services import media_service
+from app.services.face_service import extract_embedding
+from app.services.recognition_service import record_recognition_event, match_embedding
+from app.workers.video_processing import process_video_job
+
+router = APIRouter(prefix="/recognize", tags=["recognize"], dependencies=[Depends(get_current_admin)])
+
+
+@router.post("/frame", response_model=RecognitionResult)
+def recognize_frame(image: UploadFile, camera_id: str | None = None):
+    image_bytes = image.file.read()
+    embedding = extract_embedding(image_bytes)
+    user_id, confidence_score = match_embedding(embedding)
+
+    log_id, decision = record_recognition_event(
+        user_id=user_id,
+        confidence_score=confidence_score,
+        liveness_passed=None,
+        camera_id=camera_id,
+    )
+
+    user = users_repo.get_user(user_id) if user_id else None
+    return RecognitionResult(
+        decision=decision,
+        user_id=user_id,
+        full_name=user["full_name"] if user else None,
+        confidence_score=confidence_score,
+        liveness_passed=None,
+        log_id=log_id,
+    )
+
+
+@router.post("/video", response_model=VideoJobResponse)
+def recognize_video(video: UploadFile, background_tasks: BackgroundTasks, admin=Depends(get_current_admin)):
+    stored_path = media_service.save_upload(video, subdir="uploads/video")
+    media_upload_id = media_repo.create_media_upload(
+        source_type="upload_video",
+        file_path=stored_path,
+        original_filename=video.filename,
+        uploaded_by_admin_id=admin["admin_id"],
+    )
+
+    background_tasks.add_task(process_video_job, media_upload_id)
+
+    return VideoJobResponse(media_upload_id=media_upload_id, status="pending")
+
+
+@router.get("/video/{media_upload_id}", response_model=VideoJobStatusResponse)
+def get_video_job_status(media_upload_id: int):
+    upload = media_repo.get_media_upload(media_upload_id)
+    logs = [
+        log["id"]
+        for log in __import__("app.db.repository.logs_repo", fromlist=["list_logs"]).list_logs(limit=1000)
+        if log["media_upload_id"] == media_upload_id
+    ]
+    return VideoJobStatusResponse(media_upload_id=media_upload_id, status=upload["status"], result_log_ids=logs)
+That __import__ hack is ugly — let me fix it properly with a dedicated repo query.
+
+Edit c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\db\repository\logs_repo.py
+Added 9 lines
+Edit c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\recognize.py
+Modified
+Edit c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\recognize.py
+Modified
+Now the video-processing worker, logs/alerts/reports routers, and wiring into main.py:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\workers\__init__.py
+1 line
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\workers\video_processing.py
+43 lines
+import cv2
+
+from app.db.repository import media_repo
+from app.services.face_service import extract_embedding
+from app.services.recognition_service import match_embedding, record_recognition_event
+
+FRAME_SAMPLE_INTERVAL = 10
+
+
+def process_video_job(media_upload_id: int) -> None:
+    media_repo.set_status(media_upload_id, "processing")
+    upload = media_repo.get_media_upload(media_upload_id)
+
+    try:
+        capture = cv2.VideoCapture(upload["file_path"])
+        fps = capture.get(cv2.CAP_PROP_FPS) or 30
+        frame_index = 0
+
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+
+            if frame_index % FRAME_SAMPLE_INTERVAL == 0:
+                _, buffer = cv2.imencode(".jpg", frame)
+                embedding = extract_embedding(buffer.tobytes())
+                user_id, confidence_score = match_embedding(embedding)
+                record_recognition_event(
+                    user_id=user_id,
+                    confidence_score=confidence_score,
+                    liveness_passed=None,
+                    media_upload_id=media_upload_id,
+                    frame_timestamp_ms=int((frame_index / fps) * 1000),
+                )
+
+            frame_index += 1
+
+        capture.release()
+        media_repo.set_status(media_upload_id, "completed", processed_at_now=True)
+    except Exception:
+        media_repo.set_status(media_upload_id, "failed", processed_at_now=True)
+        raise
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\logs.py
+13 lines
+from fastapi import APIRouter, Depends
+
+from app.core.deps import get_current_admin
+from app.db.repository import logs_repo
+from app.schemas.recognition import AccessLogResponse
+
+router = APIRouter(prefix="/logs", tags=["logs"], dependencies=[Depends(get_current_admin)])
+
+
+@router.get("", response_model=list[AccessLogResponse])
+def list_logs(limit: int = 100, offset: int = 0, decision: str | None = None):
+    return logs_repo.list_logs(limit=limit, offset=offset, decision=decision)
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\alerts.py
+19 lines
+from fastapi import APIRouter, Depends
+
+from app.core.deps import get_current_admin
+from app.db.repository import alerts_repo
+from app.schemas.alerts import AlertResponse
+
+router = APIRouter(prefix="/alerts", tags=["alerts"], dependencies=[Depends(get_current_admin)])
+
+
+@router.get("", response_model=list[AlertResponse])
+def list_alerts(resolved: bool | None = None, limit: int = 100, offset: int = 0):
+    return alerts_repo.list_alerts(resolved=resolved, limit=limit, offset=offset)
+
+
+@router.patch("/{alert_id}/resolve")
+def resolve_alert(alert_id: int, admin=Depends(get_current_admin)):
+    alerts_repo.resolve_alert(alert_id, admin_id=admin["admin_id"])
+    return {"status": "resolved"}
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\routers\reports.py
+29 lines
+from fastapi import APIRouter, Depends
+
+from app.core.deps import get_current_admin
+from app.db.repository import alerts_repo, logs_repo, reports_repo
+from app.schemas.reports import ReportGenerateRequest, ReportResponse
+from app.services.groq_service import summarize_events
+
+router = APIRouter(prefix="/reports", tags=["reports"], dependencies=[Depends(get_current_admin)])
+
+
+@router.get("", response_model=list[ReportResponse])
+def list_reports(limit: int = 50, offset: int = 0):
+    return reports_repo.list_reports(limit=limit, offset=offset)
+
+
+@router.post("/generate", response_model=ReportResponse)
+def generate_report(request: ReportGenerateRequest):
+    logs = logs_repo.list_logs(limit=1000)
+    alerts = alerts_repo.list_alerts(limit=1000)
+    summary_text = summarize_events(logs, alerts)
+
+    report_id = reports_repo.create_report(
+        period_start=request.period_start,
+        period_end=request.period_end,
+        summary_text=summary_text,
+        log_ids_included=[log["id"] for log in logs],
+    )
+    return reports_repo.get_report(report_id)
+Now wire everything into main.py, add a startup hook that ensures the Qdrant collection exists, and update requirements.txt:
+
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\app\main.py
+29 lines
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.routers import alerts, auth, enroll, logs, recognize, reports, users
+from app.vector.collections import ensure_collection
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_collection()
+    yield
+
+
+app = FastAPI(title="EagleEye API", lifespan=lifespan)
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(enroll.router)
+app.include_router(recognize.router)
+app.include_router(logs.router)
+app.include_router(alerts.router)
+app.include_router(reports.router)
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+Read c:\Users\akili\Desktop\Capston Project\EagleEye\backend\requirements.txt
+Write c:\Users\akili\Desktop\Capston Project\EagleEye\backend\requirements.txt
+14 lines
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+
+mysql-connector-python
+
+qdrant-client
+
+pyjwt
+passlib[bcrypt]
+
+opencv-python
+Edit c:\Users\akili\Desktop\Capston Project\EagleEye\backend\.gitignore
+Added 1 line
+Now let's sanity-check the code compiles and that the module wiring is correct:
+
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye/backend" && python -m py_compile $(find app -name "*.py") && echo "COMPILE OK"
+
+OUT
+COMPILE OK
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye/backend" && ./venv/Scripts/python.exe -m pip install -q -r requirements.txt 2>&1 | tail -30
+
+OUT
+Command did not complete within its 120s timeout and was moved to the background (ID: bu193qljf). Output is being written to: C:\Users\akili\AppData\Local\Temp\claude\c--Users-akili-Desktop-Capston-Project-EagleEye\f76a2396-0156-426f-bfc1-dd4d7de045c8\tasks\bu193qljf.output. You will be notified when it completes. To check interim output, use Read on that file path.
+Session cwd remains C:\Users\akili\Desktop\Capston Project\EagleEye\backend; directory changes made by the backgrounded command do not apply to subsequent commands.
+Install is running in the background (opencv-python download is large). While that finishes, let me finish the remaining todo items.
+
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+
+Verify pip install completes and app imports cleanly
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye" && find backend/app -name "*.py" | sort
+
+OUT
+backend/app/__init__.py
+backend/app/core/__init__.py
+backend/app/core/config.py
+backend/app/core/deps.py
+backend/app/core/security.py
+backend/app/db/__init__.py
+backend/app/db/migrate.py
+backend/app/db/repository/__init__.py
+backend/app/db/repository/admins_repo.py
+backend/app/db/repository/alerts_repo.py
+backend/app/db/repository/logs_repo.py
+backend/app/db/repository/media_repo.py
+backend/app/db/repository/reports_repo.py
+backend/app/db/repository/users_repo.py
+backend/app/db/session.py
+backend/app/main.py
+backend/app/routers/__init__.py
+backend/app/routers/alerts.py
+backend/app/routers/auth.py
+backend/app/routers/enroll.py
+backend/app/routers/logs.py
+backend/app/routers/recognize.py
+backend/app/routers/reports.py
+backend/app/routers/users.py
+backend/app/schemas/__init__.py
+backend/app/schemas/alerts.py
+backend/app/schemas/auth.py
+backend/app/schemas/recognition.py
+backend/app/schemas/reports.py
+backend/app/schemas/users.py
+backend/app/services/__init__.py
+backend/app/services/face_service.py
+backend/app/services/groq_service.py
+backend/app/services/media_service.py
+backend/app/services/recognition_service.py
+backend/app/vector/__init__.py
+backend/app/vector/collections.py
+backend/app/vector/qdrant_client.py
+backend/app/workers/__init__.py
+backend/app/workers/video_processing.py
+Everything's in place. Now waiting on the pip install to finish so I can verify app.main actually imports without errors.
+
+Bash
+IN
+sleep 90 && echo done
+
+OUT
+Command running in background with ID: blrn91fmu. Output is being written to: C:\Users\akili\AppData\Local\Temp\claude\c--Users-akili-Desktop-Capston-Project-EagleEye\f76a2396-0156-426f-bfc1-dd4d7de045c8\tasks\blrn91fmu.output. You will be notified when it completes. To check interim output, use Read on that file path.
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+
+Verify pip install completes and app imports cleanly
+Here's what's scaffolded now:
+
+Infra: docker-compose.yml (MySQL 8 + Qdrant, with volumes), .env.example at root and in backend/.
+
+DB layer (backend/app/db/): schema.sql (all 6 tables from our design), migrate.py (idempotent runner), session.py (connection pool), and repository/ with raw-SQL functions per table (admins_repo, users_repo, media_repo, logs_repo, alerts_repo, reports_repo).
+
+Vector layer (backend/app/vector/): Qdrant client singleton + collections.py (ensure_collection, upsert_face_embedding, search_similar_faces, delete_user_embeddings), 512-dim/Cosine per the ArcFace plan.
+
+Backend ops: core/config.py (pydantic-settings), core/security.py + core/deps.py (JWT issue/verify, get_current_admin dependency gating every router except /auth/login), full router set (auth, users, enroll, recognize, logs, alerts, reports) wired into main.py with a lifespan hook that calls ensure_collection() on startup, and /recognize/video running as a BackgroundTasks job per your call, polled via GET /recognize/video/{id}.
+
+One honest gap, flagged rather than faked: services/face_service.py (embedding extraction, liveness) and services/groq_service.py (summary generation) are stubs that raise NotImplementedError — that's the actual Week 1/2/3 CV and LLM work, not scaffolding, so I didn't fake it with placeholder logic. Everything around them (DB writes, Qdrant search, alert thresholds in recognition_service.py, the video frame-sampling loop in workers/video_processing.py) is real and ready to call into those once InsightFace/Groq are wired in.
+
+I ran a full py_compile pass — no syntax errors. I also kicked off pip install -r requirements.txt in your backend venv in the background (opencv-python is a slow download) so I can confirm the app actually imports cleanly; I'll report back once that finishes.
+
+Bash
+IN
+cat "C:\Users\akili\AppData\Local\Temp\claude\c--Users-akili-Desktop-Capston-Project-EagleEye\f76a2396-0156-426f-bfc1-dd4d7de045c8\tasks\bu193qljf.output" 2>&1 | tail -60
+
+OUT
+(Bash completed with no output)
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye/backend" && ./venv/Scripts/python.exe -m pip show fastapi qdrant-client mysql-connector-python opencv-python pyjwt 2>&1 | grep -E "Name|WARNING|not found" 
+
+OUT
+WARNING: Package(s) not found: mysql-connector-python, opencv-python, pyjwt, qdrant-client
+Name: fastapi
+That was just a leftover timer, not the actual install — the pip install (opencv-python is a big download) is still running in the background. I'll wait for its completion notification rather than polling further.
+
+The pip install finished successfully. Let me verify the app actually imports cleanly now.
+
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye/backend" && ./venv/Scripts/python.exe -c "import app.main" 2>&1
+
+OUT
+(Bash completed with no output)
+Bash
+IN
+cd "c:/Users/akili/Desktop/Capston Project/EagleEye/backend" && ./venv/Scripts/python.exe -c "import app.main; print('IMPORT OK')" 2>&1; echo "exit=$?"
+
+OUT
+IMPORT OK
+exit=0
+app.main imports cleanly with no errors — all routers, DB repos, Qdrant wiring, and JWT/security modules load correctly.
+
+Update Todos
+
+Create docker-compose.yml for MySQL + Qdrant
+
+Add backend config (pydantic-settings) and .env.example
+
+Write schema.sql and migrate.py
+
+Build DB session pool and repository modules
+
+Build Qdrant client and collection setup
+
+Build JWT auth/security module
+
+Build pydantic schemas
+
+Build router skeletons and wire into main.py
+
+Update backend requirements.txt
+
+Verify pip install completes and app imports cleanly
+Scaffolding is done and verified. Summary of what's ready to run:
+
+docker compose up -d (from repo root) starts MySQL + Qdrant
+python -m app.db.migrate (from backend/) applies schema.sql
+uvicorn app.main:app --reload starts the API — it'll create the face_embeddings Qdrant collection on startup and serve /health, /auth/login, and the rest of the routers (all guarded by JWT except login)
+The only things that will actually error at runtime right now are the two stubs — extract_embedding/check_liveness in face_service.py and summarize_events in groq_service.py — since those are real Week 1–3 work (InsightFace, Groq), not scaffolding. Everything else (schema, pooling, repos, Qdrant search, JWT, alert-threshold logic, the video background job) is real and wired end-to-end.
+
+Want me to move on to the InsightFace integration next (Week 1's actual milestone — enroll + get a match back from a live frame), or pause here so you can spin up Docker and try the empty skeleton first?
+
+Admin account created (username: admin, password: admin123 — please change this later). 
